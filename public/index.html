@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kosmik Layouts</title>
+  <script src="/kosmik-ui.js"></script>
+  <link rel="stylesheet" href="/kosmik-ui.css">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <!-- Static text is English until app.js applies the chosen language (data-i18n = text, data-i18n-attr = attr:key;...). -->
+  <header class="bar">
+    <h1 class="brand"><span class="brand-mark" aria-hidden="true"></span>Kosmik<span>Layouts</span></h1>
+    <nav class="tabs" aria-label="Sections" data-i18n-attr="aria-label:html.sections">
+      <a href="#layouts" data-tab="layouts" data-i18n="tab.layouts">Layouts</a>
+      <a href="#obs" data-tab="obs" data-i18n="tab.obs">OBS connection</a>
+    </nav>
+    <button id="steps-toggle" type="button" class="small" aria-controls="steps" data-i18n="steps.toggle">First steps</button>
+    <span id="obs" class="pill" role="status"><span class="pill-text">…</span></span>
+    <details class="k-menu" id="appearance">
+      <summary aria-label="Look and language" title="Look and language" data-i18n-attr="aria-label:html.appearance;title:html.appearance">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7"/><path d="M10 3a7 7 0 0 0 0 14z" fill="currentColor"/></svg>
+      </summary>
+      <div class="k-menu-panel">
+        <div class="k-menu-group"><span data-i18n="look.title">Look</span><div id="looks"></div></div>
+        <div class="k-menu-group">
+          <span data-i18n="lang.group">Language</span>
+          <div id="lang-switch" class="seg" role="group" aria-label="Language" data-i18n-attr="aria-label:lang.group">
+            <button type="button" data-lang="es" lang="es">Español</button>
+            <button type="button" data-lang="en" lang="en">English</button>
+          </div>
+        </div>
+      </div>
+    </details>
+  </header>
+
+  <section id="steps" class="steps-bar" aria-label="First steps" data-i18n-attr="aria-label:steps.toggle" hidden></section>
+
+  <!-- ============================================================ Layouts tab -->
+  <main id="tab-layouts" class="layout" data-panel="layouts">
+    <div class="col main">
+      <!-- What happens right now, in the order it happens: game → layout → OBS scene. -->
+      <section class="chain framed" aria-live="polite">
+        <div class="chain-link"><small data-i18n="now.game">Game</small><strong id="detected">—</strong></div>
+        <div class="chain-link is-layout"><small data-i18n="now.layout">Layout on screen</small><strong id="active">—</strong></div>
+        <div class="chain-link"><small data-i18n="now.scene">Scene</small><strong id="scene-now">—</strong></div>
+        <div class="mode">
+          <span id="mode">—</span>
+          <button id="auto" type="button" class="small" hidden data-i18n="now.unlock">Back to automatic</button>
+        </div>
+      </section>
+
+      <section id="help" class="card help tone-bad" hidden></section>
+
+      <section class="card">
+        <div class="row-between">
+          <h2 data-i18n="layouts.title">Layouts</h2>
+          <span id="layouts-count" class="hint"></span>
+        </div>
+        <p class="hint rule" data-i18n="layouts.rule">If several of your games are open, the one you started last wins. Switching windows changes nothing.</p>
+        <div id="profiles" class="profiles"></div>
+      </section>
+    </div>
+
+    <aside class="col side">
+      <section class="card live">
+        <div class="row-between">
+          <h2 data-i18n="live.title">On stream now</h2>
+          <button id="live-toggle" type="button" class="small" aria-pressed="true" data-i18n="live.pause">Pause</button>
+        </div>
+        <div class="screen" id="screen">
+          <img id="shot" alt="" hidden>
+          <p id="screen-empty" class="screen-empty" data-i18n="live.off">No picture while OBS isn't connected.</p>
+        </div>
+        <p id="screen-caption" class="caption"></p>
+      </section>
+
+      <form id="new" class="card new" autocomplete="off">
+        <h2 data-i18n="new.title">Save the current scene</h2>
+        <p class="hint lead" data-i18n="new.lead">Saves where every OBS source is right now, and what each capture is pointed at.</p>
+        <div class="field">
+          <label for="new-name" data-i18n="new.name">Name</label>
+          <input id="new-name" name="name" required maxlength="60" placeholder="e.g. Just Chatting" data-i18n-attr="placeholder:new.namePh">
+        </div>
+        <div class="field">
+          <label for="new-exe" data-i18n="new.exe">Game program</label>
+          <input id="new-exe" name="exe" class="mono-input" placeholder="game.exe" data-i18n-attr="placeholder:new.exePh" aria-describedby="new-exe-hint">
+          <button type="button" id="apps-refresh" class="link pick" data-i18n="new.pick">Pick from open apps</button>
+          <ul id="apps" class="apps" hidden></ul>
+          <small id="new-exe-hint" class="hint" data-i18n="new.exeHint">Leave empty for a layout you pick by hand or use as the default.</small>
+        </div>
+        <label class="check"><input type="checkbox" name="isDefault"> <span data-i18n="new.default">Use it when no game is open</span></label>
+        <button id="new-submit" type="submit" class="primary" data-i18n="new.submit">Save from OBS</button>
+        <p id="new-msg" class="msg" role="status" hidden></p>
+      </form>
+
+      <section class="card">
+        <h2 data-i18n="log.title">Activity</h2>
+        <ol id="log" class="log"></ol>
+      </section>
+    </aside>
+  </main>
+
+  <!-- ============================================================ OBS tab -->
+  <main id="tab-obs" class="layout" data-panel="obs" hidden>
+    <div class="col main">
+      <form id="conn" class="card conn" autocomplete="off" novalidate>
+        <h2 data-i18n="conn.title">How to reach OBS</h2>
+        <p class="hint lead" data-i18n="conn.lead">Kosmik Layouts talks to OBS through its WebSocket server (built into OBS 28 and newer).</p>
+        <p id="conn-env" class="warn-box" hidden></p>
+
+        <fieldset class="modes" id="conn-modes">
+          <legend class="sr-only" data-i18n="conn.mode">Connection</legend>
+          <label class="mode-card">
+            <input type="radio" name="mode" value="auto">
+            <span class="mode-body">
+              <strong data-i18n="conn.auto">Automatic</strong>
+              <small data-i18n="conn.autoHint">OBS runs on this PC. Port and password are read from OBS's own settings, so there's nothing to type, and changes in OBS are picked up by themselves.</small>
+            </span>
+          </label>
+          <label class="mode-card">
+            <input type="radio" name="mode" value="manual">
+            <span class="mode-body">
+              <strong data-i18n="conn.manual">Manual</strong>
+              <small data-i18n="conn.manualHint">OBS runs on another PC, or you want to type the port and password yourself.</small>
+            </span>
+          </label>
+        </fieldset>
+
+        <div id="conn-auto" class="detected"></div>
+
+        <div id="conn-manual" class="grid-conn" hidden>
+          <div class="field host">
+            <label for="conn-host" data-i18n="conn.host">Server IP or name</label>
+            <input id="conn-host" name="host" class="mono-input" spellcheck="false" placeholder="127.0.0.1" aria-describedby="conn-host-hint">
+            <small id="conn-host-hint" class="hint" data-i18n="conn.hostHint">127.0.0.1 when OBS is on this PC. For another PC, its local IP (e.g. 192.168.1.20).</small>
+          </div>
+          <div class="field port">
+            <label for="conn-port" data-i18n="conn.port">Port</label>
+            <input id="conn-port" name="port" type="number" min="1" max="65535" step="1" class="mono-input" placeholder="4455">
+          </div>
+          <div class="field pass">
+            <label for="conn-pass"><span data-i18n="conn.password">Password</span> <span id="conn-pass-badge" class="badge"></span></label>
+            <div class="pass-row">
+              <input id="conn-pass" name="password" type="password" autocomplete="new-password" spellcheck="false" aria-describedby="conn-pass-hint">
+              <button id="conn-pass-show" type="button" class="small" aria-pressed="false" data-i18n="conn.show">Show</button>
+            </div>
+            <small id="conn-pass-hint" class="hint" data-i18n="conn.passHint">Leave empty to keep the saved one. If OBS has authentication off, leave it empty.</small>
+            <label class="check" id="conn-clear-row" hidden><input type="checkbox" id="conn-clear"> <span data-i18n="conn.clear">Remove the saved password</span></label>
+          </div>
+          <details class="guide wide">
+            <summary data-i18n="conn.whereTitle">Where do I find these in OBS?</summary>
+            <ol class="steps numbered">
+              <li data-i18n="conn.where1">In OBS: Tools › WebSocket Server Settings.</li>
+              <li data-i18n="conn.where2">Tick “Enable WebSocket server”. The port is right below it.</li>
+              <li data-i18n="conn.where3">Click “Show Connect Info”: it shows the server IP, port and password, each with a copy button.</li>
+              <li data-i18n="conn.where4">OBS on another PC: allow OBS through that PC's firewall the first time Windows asks.</li>
+            </ol>
+          </details>
+        </div>
+
+        <div class="actions">
+          <button id="conn-save" type="submit" class="primary" data-i18n="conn.save">Save and connect</button>
+          <button id="conn-retry" type="button" data-i18n="conn.retry">Reconnect now</button>
+          <span id="conn-msg" class="msg" role="status" hidden></span>
+        </div>
+      </form>
+    </div>
+
+    <aside class="col side">
+      <section class="card">
+        <h2 data-i18n="info.title">Status</h2>
+        <dl id="info" class="info"></dl>
+      </section>
+
+      <section class="card settings">
+        <h2 data-i18n="settings.title">Behaviour</h2>
+        <div class="stack">
+          <div class="field">
+            <label for="scene" data-i18n="settings.scene">Scene to control</label>
+            <select id="scene"></select>
+            <small class="hint" data-i18n="settings.sceneHint">Layouts move sources inside this scene only.</small>
+          </div>
+          <div class="field">
+            <label for="default" data-i18n="settings.default">Default layout</label>
+            <select id="default"></select>
+            <small class="hint" data-i18n="settings.defaultHint">Shown when none of your games is open.</small>
+          </div>
+          <div class="field">
+            <label for="anim" data-i18n="settings.anim">Animation length</label>
+            <div class="range-row">
+              <input id="anim-range" type="range" min="0" max="1500" step="50" aria-hidden="true" tabindex="-1">
+              <input id="anim" type="number" min="0" max="3000" step="50">
+            </div>
+            <small class="hint" data-i18n="settings.animHint">In milliseconds. 0 = instant.</small>
+          </div>
+        </div>
+      </section>
+    </aside>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
