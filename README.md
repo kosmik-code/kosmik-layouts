@@ -46,6 +46,7 @@ Now close the game and open it again: the scene follows. The **First steps** but
 - **Leave a source alone:** open *Sources it controls* on a layout and untick it (your alerts, say), and that layout won't touch it.
 - **Renamed a source in OBS?** Layouts find sources by name, so press **Update from OBS** on the layouts that use it.
 - **Anything you move by hand stays** until the next game opens or closes.
+- **Kosmik Voice too:** set its overlay's *Placement* to **Free box** and it becomes a normal source you can drag and resize, so each layout can put your voice overlay somewhere else.
 - **Which scene it controls:** whichever one is live, unless you pick one under **OBS connection › Behaviour**. There you can also set how long the slide animation lasts (0 = instant).
 - **Two-PC setups:** in **OBS connection**, choose *Manual* and type the streaming PC's address and the password from OBS's *Show Connect Info*. Run Kosmik Layouts on the gaming PC, since that's where it looks for games.
 
