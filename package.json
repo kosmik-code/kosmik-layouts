@@ -1,6 +1,6 @@
 {
   "name": "kosmik-layouts",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "Per-game OBS layouts: one scene, sources moved into place automatically when a game starts.",
   "type": "module",

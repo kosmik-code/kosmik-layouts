@@ -156,6 +156,7 @@ struct AppState {
     installer: Mutex<Option<Installer>>,
     hosts: HashSet<String>,
     origins: HashSet<String>,
+    hotkeys: Arc<crate::hotkeys::Hotkeys>,
 }
 
 impl AppState {
@@ -164,6 +165,7 @@ impl AppState {
         let mut s = self.ctl.state();
         s["version"] = json!(crate::VERSION);
         s["update"] = self.update.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        s["hotkeys"] = self.hotkeys.view();
         s
     }
 
@@ -440,6 +442,22 @@ async fn route(st: Arc<AppState>, req: Request) -> Res {
             _ => Err(HttpError::new(409, "no update to install")),
         };
     }
+    if path == "/api/hotkeys" && req.method() == Method::PUT {
+        let b = read_json(req).await?;
+        return match st.hotkeys.set(b["id"].as_str().unwrap_or(""), b["key"].as_str().unwrap_or("")) {
+            Ok(_) => st.ok(200),
+            Err("io") => Err(HttpError::new(500, "internal error")),
+            Err(code) => Err(HttpError::new(400, code)),
+        };
+    }
+    // While the page waits for a new combination, the hotkeys are let go of, so even the current one
+    // reaches the page.
+    if path == "/api/hotkeys/pause" && req.method() == Method::POST {
+        let b = read_json(req).await?;
+        let Some(on) = b["paused"].as_bool() else { return Err(HttpError::new(400, "paused must be true or false")) };
+        st.hotkeys.pause(on);
+        return Ok(json_reply(200, &json!({ "paused": on })));
+    }
     if path.starts_with("/api/") {
         return api(st, req).await;
     }
@@ -475,6 +493,7 @@ pub struct ServerOptions {
     pub connection: Option<Arc<Connection>>,
     pub list_apps: ListApps,
     pub public: PublicFiles,
+    pub hotkeys: Arc<crate::hotkeys::Hotkeys>,
 }
 
 pub struct ServerHandle {
@@ -518,6 +537,7 @@ pub async fn start_server(listener: TcpListener, opts: ServerOptions) -> std::io
         installer: Mutex::new(None),
         hosts,
         origins,
+        hotkeys: opts.hotkeys,
     });
     let app = axum::Router::new().fallback(handle).with_state(state.clone());
     let task = tokio::spawn(async move {
@@ -563,7 +583,8 @@ mod tests {
         let public = PublicFiles::Embedded(&crate::PUBLIC);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let list_apps: ListApps = Arc::new(|| vec![json!({ "exe": "game.exe", "title": "Game" })]);
-        let srv = start_server(listener, ServerOptions { controller: ctl, connection, list_apps, public }).await.unwrap();
+        let hotkeys = crate::hotkeys::Hotkeys::load(dir.path(), &crate::HOTKEYS);
+        let srv = start_server(listener, ServerOptions { controller: ctl, connection, list_apps, public, hotkeys }).await.unwrap();
         Ctx { url: srv.url.clone(), port: srv.port, srv, http: reqwest::Client::new(), _dir: dir }
     }
 
@@ -574,6 +595,25 @@ mod tests {
         let mut out = String::new();
         s.read_to_string(&mut out).await.unwrap();
         out.split(' ').nth(1).unwrap().parse().unwrap()
+    }
+
+    #[tokio::test]
+    async fn hotkeys_show_in_the_state_and_can_be_changed() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::load(dir.path()).unwrap());
+        let ctl = Controller::new(ObsClient::new(Duration::from_secs(3), Duration::from_secs(5)), store, None);
+        let c = serve(ctl, None, dir).await;
+        let (_, s) = c.json(M::GET, "/api/state", None).await;
+        assert_eq!(s["hotkeys"][0], json!({ "id": "lock", "key": "Ctrl+Alt+Shift+L", "default": "Ctrl+Alt+Shift+L", "error": null }));
+        assert_eq!(s["hotkeys"][1]["key"], "Ctrl+Alt+Shift+N");
+        let (status, e) = c.json(M::PUT, "/api/hotkeys", Some(json!({ "id": "next", "key": "Ctrl+Alt+Shift+L" }))).await;
+        assert_eq!((status, e["error"].clone()), (400, json!("in_use_here")));
+        let (status, s) = c.json(M::PUT, "/api/hotkeys", Some(json!({ "id": "next", "key": "ctrl+alt+9" }))).await;
+        assert_eq!((status, s["hotkeys"][1]["key"].clone()), (200, json!("Ctrl+Alt+9")));
+        let (status, _) = c.json(M::POST, "/api/hotkeys/pause", Some(json!({ "paused": true }))).await;
+        assert_eq!(status, 200);
+        let foreign = c.http.put(format!("{}/api/hotkeys", c.url)).header("Origin", "https://evil.example").header("Content-Type", "application/json").body(r#"{"id":"lock","key":""}"#);
+        assert_eq!(foreign.send().await.unwrap().status(), 403);
     }
 
     #[tokio::test]

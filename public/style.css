@@ -39,6 +39,17 @@ label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
 }
 .update-banner strong { color: var(--ok); }
+
+/* Hotkeys: the keys as key caps, with Change / Default / Off next to them. */
+.hk-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+.hk-row:first-child { border-top: 0; }
+.hk-label { font-weight: 600; flex: 1 1 100%; }
+.hk-keys { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; }
+.hk-keys kbd { font: 600 13px var(--mono); padding: 3px 8px; border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); background: var(--raised); color: var(--heading); }
+.hk-keys .kbd-plus { color: var(--muted); }
+.hk-keys.capturing { padding: 0 10px; border: 1px dashed var(--accent); border-radius: var(--radius-sm); color: var(--accent-text); outline: none; }
+.hk-actions { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.hk-error { flex-basis: 100%; margin: 0; }
 .update-banner button:first-of-type { margin-left: auto; }
 
 /* ---------- first steps (same pattern as Kosmik Voice) ---------- */

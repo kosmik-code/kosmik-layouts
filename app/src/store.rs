@@ -146,6 +146,8 @@ pub struct Store {
     dir: PathBuf,
     file: PathBuf,
     data: Mutex<Value>,
+    /// Bumped after every save (the tray's layout list follows it).
+    revision: tokio::sync::watch::Sender<u64>,
 }
 
 impl Store {
@@ -174,7 +176,11 @@ impl Store {
             Err(e) if e.kind() == std::io::ErrorKind::InvalidData => {}
             Err(e) => return Err(e),
         }
-        Ok(Store { dir: dir.to_path_buf(), file, data: Mutex::new(data) })
+        Ok(Store { dir: dir.to_path_buf(), file, data: Mutex::new(data), revision: tokio::sync::watch::channel(0).0 })
+    }
+
+    pub fn revisions(&self) -> tokio::sync::watch::Receiver<u64> {
+        self.revision.subscribe()
     }
 
     pub fn data(&self) -> Value {
@@ -206,6 +212,8 @@ impl Store {
         std::fs::create_dir_all(&self.dir).map_err(|e| UpdateError::Io(e.to_string()))?;
         write_json_atomic(&self.file, &next).map_err(|e| UpdateError::Io(e.to_string()))?;
         *data = next;
+        drop(data);
+        self.revision.send_modify(|n| *n += 1);
         Ok(r)
     }
 }

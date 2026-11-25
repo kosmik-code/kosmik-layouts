@@ -102,6 +102,8 @@ struct Inner {
     started: AtomicBool,
     /// Bumped by restart/stop: an older connection attempt may no longer touch the status.
     generation: AtomicU64,
+    /// True while waiting out the retry delay after a failed try (only then does a nudge help).
+    between_tries: AtomicBool,
     wake: Notify,
     retry: Duration,
     timeout: Duration,
@@ -130,6 +132,7 @@ impl ObsClient {
             stopped: AtomicBool::new(true),
             started: AtomicBool::new(false),
             generation: AtomicU64::new(0),
+            between_tries: AtomicBool::new(false),
             wake: Notify::new(),
             retry,
             timeout,
@@ -227,6 +230,15 @@ impl ObsClient {
         }
     }
 
+    /// OBS just showed up (or is running but not answering yet): try again now instead of after the
+    /// retry delay. Only shortens that wait: never interrupts a try in progress, and does nothing while
+    /// connected, stopped, or after a rejected password.
+    pub fn nudge(&self) {
+        if !self.stopped() && self.0.between_tries.load(Ordering::SeqCst) {
+            self.0.wake.notify_one();
+        }
+    }
+
     async fn supervise(self) {
         loop {
             if self.stopped() {
@@ -234,7 +246,15 @@ impl ObsClient {
                 continue;
             }
             let generation = self.0.generation.load(Ordering::SeqCst);
-            self.set_status_for(generation, "connecting", "");
+            // Retries after a failure stay "disconnected" (with the reason) instead of flickering
+            // through "connecting" on every try.
+            let retrying = {
+                let s = self.0.status.borrow();
+                s.state == "disconnected" && !s.message.is_empty()
+            };
+            if !retrying {
+                self.set_status_for(generation, "connecting", "");
+            }
             let ended = tokio::select! {
                 e = self.attempt(generation) => e,
                 _ = self.0.wake.notified() => continue,
@@ -255,11 +275,13 @@ impl ObsClient {
                     self.0.wake.notified().await;
                 }
                 Ended::Closed(reason) => {
+                    self.0.between_tries.store(true, Ordering::SeqCst);
                     self.set_status_for(generation, "disconnected", &reason);
                     tokio::select! {
                         _ = tokio::time::sleep(self.0.retry) => {}
                         _ = self.0.wake.notified() => {}
                     }
+                    self.0.between_tries.store(false, Ordering::SeqCst);
                 }
             }
         }
@@ -441,6 +463,21 @@ mod tests {
         let first = obs.status().epoch;
         fake.drop_clients();
         assert!(obs.wait_for(3000, |s| s.state == "connected" && s.epoch > first).await);
+        obs.stop();
+    }
+
+    #[tokio::test]
+    async fn a_nudge_connects_right_away_instead_of_after_the_retry_delay() {
+        let fake = FakeObs::start("", vec![("Live", vec![])]).await;
+        let obs = client("ws://127.0.0.1:1", "", 60_000);
+        obs.start();
+        assert!(obs.wait_for(3000, |s| s.state == "disconnected" && !s.message.is_empty()).await);
+        obs.set_target(&fake.url, ""); // OBS appears; the next try would only be a minute away
+        obs.nudge();
+        assert!(obs.wait_for(2000, |s| s.state == "connected").await);
+        obs.nudge(); // no effect while connected
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert_eq!(fake.connections(), 1);
         obs.stop();
     }
 

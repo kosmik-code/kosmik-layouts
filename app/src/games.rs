@@ -1,5 +1,5 @@
 //! Which game is running: poll the Windows process list and pick the profile whose game started last.
-//! Cheap (one process snapshot every few seconds), no admin rights, no injection. Same rules as
+//! Cheap (one process snapshot a second, about a millisecond each), no admin rights, no injection. Same rules as
 //! src/games.js; the process list comes from the Windows API instead of `tasklist`.
 
 use serde_json::{Value, json};
@@ -122,6 +122,7 @@ pub fn match_profile<'a>(profiles: &'a [Value], running: &HashSet<String>, first
 pub type ListFn = Arc<dyn Fn() -> std::io::Result<HashSet<String>> + Send + Sync>;
 pub type ProfilesFn = Arc<dyn Fn() -> Vec<Value> + Send + Sync>;
 type Listener = Arc<dyn Fn(Option<String>) + Send + Sync>;
+type PollListener = Arc<dyn Fn(&HashSet<String>) + Send + Sync>;
 
 struct WatchState {
     /// None until the first poll (JS: undefined), then the matching profile id or None.
@@ -137,6 +138,7 @@ pub struct GameWatcher {
     interval: Duration,
     st: Mutex<WatchState>,
     listeners: Mutex<Vec<Listener>>,
+    polled: Mutex<Vec<PollListener>>,
     task: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
@@ -148,6 +150,7 @@ impl GameWatcher {
             interval,
             st: Mutex::new(WatchState { current: None, first_seen: HashMap::new(), polls: 0 }),
             listeners: Mutex::new(Vec::new()),
+            polled: Mutex::new(Vec::new()),
             task: Mutex::new(None),
         })
     }
@@ -156,12 +159,21 @@ impl GameWatcher {
         self.listeners.lock().unwrap_or_else(|e| e.into_inner()).push(Arc::new(f));
     }
 
+    /// Called with the full process list after every successful poll (the app uses it to spot OBS).
+    pub fn on_poll(&self, f: impl Fn(&HashSet<String>) + Send + Sync + 'static) {
+        self.polled.lock().unwrap_or_else(|e| e.into_inner()).push(Arc::new(f));
+    }
+
     /// One poll. The process list is read on a blocking thread.
     pub async fn tick(&self) {
         let list = self.list.clone();
         let Ok(Ok(running)) = tokio::task::spawn_blocking(move || list()).await else {
             return; // a failed poll keeps the current profile
         };
+        let polled = self.polled.lock().unwrap_or_else(|e| e.into_inner()).clone();
+        for f in polled {
+            f(&running);
+        }
         let changed = {
             let mut st = self.st.lock().unwrap_or_else(|e| e.into_inner());
             // Remember when each program appeared. Whatever already runs at the first poll counts as "old" (0).

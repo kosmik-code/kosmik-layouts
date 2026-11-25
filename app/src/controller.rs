@@ -361,6 +361,29 @@ impl Controller {
         }
     }
 
+    /// Hotkey: lock the layout on screen (or the one that should be), or back to automatic if locked.
+    pub async fn toggle_lock(self: &Arc<Self>) {
+        if self.lock_id().is_some() {
+            return self.set_lock(None).await;
+        }
+        if let Some(id) = self.active().or_else(|| self.wanted()) {
+            self.set_lock(Some(&id)).await;
+        }
+    }
+
+    /// Hotkey: step through automatic -> each layout in list order -> automatic again.
+    pub async fn lock_next(self: &Arc<Self>) {
+        let ids: Vec<String> = self.store.profiles().iter().filter_map(|p| p["id"].as_str().map(String::from)).collect();
+        if ids.is_empty() {
+            return;
+        }
+        let next = match self.lock_id().and_then(|l| ids.iter().position(|i| *i == l)) {
+            None => ids.first().cloned(),
+            Some(i) => ids.get(i + 1).cloned(),
+        };
+        self.set_lock(next.as_deref()).await;
+    }
+
     /// Snapshot of the current OBS scene layout: (scene, items, canvas).
     pub async fn capture(&self) -> Result<(String, Map<String, Value>, Option<Value>), ObsError> {
         self.queued(async {
@@ -512,6 +535,44 @@ pub mod tests {
         fake.drop_clients();
         until(3000, || avatar_x(&fake) == 960.0).await;
         obs.stop();
+    }
+
+    #[tokio::test]
+    async fn hotkeys_lock_the_layout_on_screen_and_step_through_layouts() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = Arc::new(Store::load(dir.path()).unwrap());
+        let ctl = Controller::new(ObsClient::new(Duration::from_secs(3), Duration::from_secs(5)), store.clone(), None);
+        ctl.toggle_lock().await; // no layouts: nothing to lock
+        assert_eq!(ctl.lock_id(), None);
+        let mut rev = store.revisions();
+        store
+            .update(|d| {
+                let p = crate::store::profiles_mut(d);
+                for id in ["a", "b", "c"] {
+                    p.push(json!({ "id": id, "name": id.to_uppercase(), "processes": [], "items": {} }));
+                }
+                d["defaultProfile"] = json!("b");
+                Ok(())
+            })
+            .unwrap();
+        assert!(rev.has_changed().unwrap(), "saving bumps the revision");
+
+        ctl.toggle_lock().await; // nothing on screen yet: locks the one that should be (the default)
+        assert_eq!(ctl.lock_id().as_deref(), Some("b"));
+        ctl.toggle_lock().await;
+        assert_eq!(ctl.lock_id(), None);
+        ctl.set_active(Some("c".into()));
+        ctl.toggle_lock().await; // the layout on screen wins
+        assert_eq!(ctl.lock_id().as_deref(), Some("c"));
+
+        let mut seen = vec![];
+        for _ in 0..4 {
+            ctl.lock_next().await;
+            seen.push(ctl.lock_id());
+        }
+        assert_eq!(seen, vec![None, Some("a".into()), Some("b".into()), Some("c".into())]);
+        ctl.lock_next().await;
+        assert_eq!(ctl.lock_id(), None, "after the last layout: back to automatic");
     }
 
     #[tokio::test]

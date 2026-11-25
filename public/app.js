@@ -175,6 +175,7 @@ function apply(state) {
   if (document.activeElement !== $("#anim")) $("#anim").value = S.animateMs;
   $("#anim-range").value = S.animateMs;
   renderLog();
+  renderHotkeys();
 
   // Rebuild the layout cards only when they changed and nobody is typing in them.
   const sig = JSON.stringify([S.profiles, S.active, S.detected, S.lock, S.defaultProfile, st, S.canvas, S.sizes]);
@@ -768,6 +769,100 @@ $("#anim").addEventListener("change", (e) => saveSettings({ animateMs: Math.max(
 $("#anim-range").addEventListener("input", (e) => ($("#anim").value = e.target.value));
 $("#anim-range").addEventListener("change", (e) => saveSettings({ animateMs: Number(e.target.value) }));
 $("#auto").addEventListener("click", () => api("/api/lock", "POST", { id: null }));
+
+// ---------------------------------------------------------------- hotkeys (the installed app only)
+
+const HK_LABELS = { lock: "hk.lock", next: "hk.next" };
+let hkCapture = null; // action id waiting for a new key combination
+let hkError = null; // why the last combination was refused
+let hkSig = "";
+
+/** "Ctrl+Alt+Shift+L" as key caps; "no hotkey" when there's none. */
+function keyCaps(key) {
+  if (!key) return [h("span", { class: "hint", text: t("hk.none") })];
+  return key.split("+").flatMap((k, i) => (i ? [h("span", { class: "kbd-plus", text: "+" }), h("kbd", { text: k })] : [h("kbd", { text: k })]));
+}
+
+/** The combination a keydown makes, in the app's form, or null for keys hotkeys can't use. */
+function comboFromEvent(e) {
+  let m;
+  let key = null;
+  if ((m = /^Key([A-Z])$/.exec(e.code))) key = m[1];
+  else if ((m = /^Digit(\d)$/.exec(e.code))) key = m[1];
+  else if ((m = /^F(\d{1,2})$/.exec(e.code)) && +m[1] >= 1 && +m[1] <= 24) key = `F${m[1]}`;
+  if (!key) return null;
+  return [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", key].filter(Boolean).join("+");
+}
+
+async function setHotkey(id, key) {
+  try {
+    await api("/api/hotkeys", "PUT", { id, key });
+    hkError = null;
+    await endCapture();
+  } catch (err) {
+    hkError = err.data?.error ?? "failed";
+    renderHotkeys(true);
+  }
+}
+
+async function startCapture(id) {
+  hkCapture = id;
+  hkError = null;
+  renderHotkeys(true);
+  // Let go of the hotkeys meanwhile, so even the current combination reaches this page.
+  await api("/api/hotkeys/pause", "POST", { paused: true }).catch(() => {});
+  $("#hk-capture")?.focus();
+}
+
+async function endCapture() {
+  const was = hkCapture;
+  hkCapture = null;
+  renderHotkeys(true);
+  if (was) await api("/api/hotkeys/pause", "POST", { paused: false }).catch(() => {});
+}
+
+window.addEventListener("keydown", (e) => {
+  if (!hkCapture) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (e.key === "Escape") return endCapture();
+  if (["Control", "Alt", "Shift", "Meta", "AltGraph", "OS"].includes(e.key)) return; // wait for the real key
+  const combo = comboFromEvent(e);
+  if (!combo) {
+    hkError = "unsupported_key";
+    return renderHotkeys(true);
+  }
+  setHotkey(hkCapture, combo);
+}, true);
+
+/** One row per hotkey: what it does, its keys, and Change / Default / Off. */
+function renderHotkeys(force = false) {
+  const box = $("#hotkeys");
+  const list = Array.isArray(S?.hotkeys) ? S.hotkeys : null;
+  box.hidden = !list;
+  if (!list) return;
+  const sig = JSON.stringify([list, hkCapture, hkError, getLanguage()]);
+  if (sig === hkSig && !force) return;
+  hkSig = sig;
+  $("#hk-rows").replaceChildren(...list.map((k) => {
+    const capturing = hkCapture === k.id;
+    const err = capturing ? hkError : k.error;
+    return h("div", { class: "hk-row" },
+      h("span", { class: "hk-label", text: t(HK_LABELS[k.id] ?? k.id) }),
+      capturing
+        ? h("span", { class: "hk-keys capturing", id: "hk-capture", tabindex: "-1", role: "status", text: t("hk.press") })
+        : h("span", { class: "hk-keys" }, ...keyCaps(k.key)),
+      h("span", { class: "hk-actions" },
+        capturing
+          ? h("button", { type: "button", class: "small", text: t("hk.cancel"), onclick: () => endCapture() })
+          : h("button", { type: "button", class: "small", text: t("hk.change"), disabled: hkCapture != null, onclick: () => startCapture(k.id) }),
+        !capturing && k.key !== k.default ? h("button", { type: "button", class: "small", text: t("hk.default", { key: k.default }), onclick: () => setHotkey(k.id, k.default) }) : null,
+        !capturing && k.key ? h("button", { type: "button", class: "small", text: t("hk.off"), onclick: () => setHotkey(k.id, "") }) : null,
+      ),
+      err ? h("p", { class: "msg tone-bad hk-error", text: t(`hk.err.${err}`) }) : null,
+    );
+  }));
+}
 
 // ---------------------------------------------------------------- polling
 

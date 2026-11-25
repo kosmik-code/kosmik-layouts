@@ -6,14 +6,24 @@
 
 mod updates;
 
+use kosmik_layouts::controller::Controller;
+use kosmik_layouts::hotkeys::{self, Hotkeys};
 use kosmik_layouts::{App, Options, StartError, log, start};
-use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem};
+use std::sync::{Arc, Mutex};
+use tauri::menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{AppHandle, Manager, RunEvent};
+use tauri::{AppHandle, Manager, RunEvent, Wry};
 use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_opener::OpenerExt;
 
+#[derive(Clone, Copy)]
 struct Text {
+    layouts: &'static str,
+    automatic: &'static str,
+    no_layouts: &'static str,
+    hint_lock: &'static str,
+    hint_next: &'static str,
     open: &'static str,
     autostart: &'static str,
     quit: &'static str,
@@ -31,6 +41,11 @@ fn spanish() -> bool {
 fn text() -> Text {
     if spanish() {
         Text {
+            layouts: "Elegir layout",
+            automatic: "Automático (según el juego)",
+            no_layouts: "Todavía no hay layouts",
+            hint_lock: "{key}: fijar / volver a automático",
+            hint_next: "{key}: siguiente layout",
             open: "Abrir Kosmik Layouts",
             autostart: "Iniciar con Windows",
             quit: "Salir",
@@ -41,6 +56,11 @@ fn text() -> Text {
         }
     } else {
         Text {
+            layouts: "Choose layout",
+            automatic: "Automatic (follows your games)",
+            no_layouts: "No layouts yet",
+            hint_lock: "{key}: lock / back to automatic",
+            hint_next: "{key}: next layout",
             open: "Open Kosmik Layouts",
             autostart: "Start with Windows",
             quit: "Quit",
@@ -65,12 +85,143 @@ fn obs_label(state: &str) -> &'static str {
     }
 }
 
-fn layout_label(name: Option<String>) -> String {
+fn layout_label(name: Option<String>, locked: bool) -> String {
+    let lock = match (locked, spanish()) {
+        (false, _) => "",
+        (true, false) => " (locked)",
+        (true, true) => " (fijado)",
+    };
     match (name, spanish()) {
-        (Some(n), false) => format!("Layout on screen: {n}"),
-        (Some(n), true) => format!("Layout en pantalla: {n}"),
+        (Some(n), false) => format!("Layout on screen: {}{lock}", menu_text(&n)),
+        (Some(n), true) => format!("Layout en pantalla: {}{lock}", menu_text(&n)),
         (None, false) => "Layout on screen: none yet".into(),
         (None, true) => "Layout en pantalla: todavía ninguno".into(),
+    }
+}
+
+/// Windows menus treat "&" as a shortcut marker; "&&" shows one.
+fn menu_text(s: &str) -> String {
+    s.replace('&', "&&")
+}
+
+/// "Choose layout": Automatic plus one line per layout, the locked one ticked, and the hotkeys.
+struct LayoutMenu {
+    sub: Submenu<Wry>,
+    shown: Option<(Vec<(String, String)>, Vec<String>)>,
+    checks: Vec<(Option<String>, CheckMenuItem<Wry>)>,
+}
+
+impl LayoutMenu {
+    /// `hints`: one line per hotkey that is set ("Ctrl+Alt+Shift+L: lock / back to automatic").
+    fn refresh(&mut self, app: &AppHandle, layouts: Vec<(String, String)>, hints: Vec<String>, locked: Option<&str>, t: &Text) -> tauri::Result<()> {
+        let key = (layouts, hints);
+        if self.shown.as_ref() != Some(&key) {
+            let (layouts, hints) = &key;
+            for item in self.sub.items()? {
+                self.sub.remove(&item)?;
+            }
+            self.checks.clear();
+            let auto = CheckMenuItem::with_id(app, "lock:", t.automatic, true, false, None::<&str>)?;
+            self.sub.append(&auto)?;
+            self.checks.push((None, auto));
+            self.sub.append(&PredefinedMenuItem::separator(app)?)?;
+            if layouts.is_empty() {
+                self.sub.append(&MenuItem::with_id(app, "no-layouts", t.no_layouts, false, None::<&str>)?)?;
+            }
+            for (id, name) in layouts {
+                let c = CheckMenuItem::with_id(app, format!("lock:{id}"), menu_text(name), true, false, None::<&str>)?;
+                self.sub.append(&c)?;
+                self.checks.push((Some(id.clone()), c));
+            }
+            if !hints.is_empty() {
+                self.sub.append(&PredefinedMenuItem::separator(app)?)?;
+            }
+            for (i, hint) in hints.iter().enumerate() {
+                self.sub.append(&MenuItem::with_id(app, format!("hint-{i}"), hint, false, None::<&str>)?)?;
+            }
+            self.shown = Some(key);
+        }
+        // Set every time: Windows ticks or unticks a clicked item by itself.
+        for (id, c) in &self.checks {
+            c.set_checked(id.as_deref() == locked)?;
+        }
+        Ok(())
+    }
+}
+
+/// Tray lines for the hotkeys that are set.
+fn hotkey_hints(keys: &[(String, String)], t: &Text) -> Vec<String> {
+    keys.iter()
+        .filter(|(_, k)| !k.is_empty())
+        .filter_map(|(id, k)| match id.as_str() {
+            "lock" => Some(t.hint_lock.replace("{key}", k)),
+            "next" => Some(t.hint_next.replace("{key}", k)),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Hotkeys registered with Windows right now, and what each one does.
+type Bound = Arc<Mutex<Vec<(Shortcut, String)>>>;
+
+/// (Re)registers the chosen hotkeys, telling the page about any Windows refuses (another program has
+/// that combination). Runs on the main thread, where the plugin's hotkey window lives.
+fn bind_hotkeys(app: &AppHandle, hk: &Hotkeys, bound: &Bound) {
+    let gs = app.global_shortcut();
+    let mut b = bound.lock().unwrap_or_else(|e| e.into_inner());
+    for (s, _) in b.drain(..) {
+        let _ = gs.unregister(s);
+    }
+    if hk.paused() {
+        return; // the page is waiting for a new combination
+    }
+    for (id, key) in hk.keys() {
+        if key.is_empty() {
+            hk.set_error(&id, None);
+            continue;
+        }
+        let Ok(s) = hotkeys::plugin_form(&key).parse::<Shortcut>() else {
+            hk.set_error(&id, Some("unsupported_key"));
+            continue;
+        };
+        match gs.register(s) {
+            Ok(()) => {
+                hk.set_error(&id, None);
+                b.push((s, id));
+            }
+            Err(e) => {
+                log::line(format!("hotkey {key} unavailable (another program uses it?): {e}"));
+                hk.set_error(&id, Some("taken"));
+            }
+        }
+    }
+}
+
+/// Registers now, and again whenever the page changes a key or pauses them.
+fn watch_hotkeys(app: AppHandle, hk: Arc<Hotkeys>, bound: Bound) {
+    bind_hotkeys(&app, &hk, &bound);
+    let (mut keys, mut paused) = (hk.keys_watch(), hk.paused_watch());
+    tauri::async_runtime::spawn(async move {
+        loop {
+            tokio::select! {
+                r = keys.changed() => if r.is_err() { return },
+                r = paused.changed() => if r.is_err() { return },
+            }
+            keys.borrow_and_update();
+            paused.borrow_and_update();
+            let (a, h, b) = (app.clone(), hk.clone(), bound.clone());
+            let _ = app.run_on_main_thread(move || bind_hotkeys(&a, &h, &b));
+        }
+    });
+}
+
+/// What a hotkey does.
+fn run_hotkey(ctl: &Arc<Controller>, action: &str) {
+    let c = ctl.clone();
+    match action {
+        "lock" => drop(tauri::async_runtime::spawn(async move { c.toggle_lock().await })),
+        "next" => drop(tauri::async_runtime::spawn(async move { c.lock_next().await })),
+        _ => {}
     }
 }
 
@@ -161,12 +312,13 @@ fn main() {
             let _ = std::fs::write(&marker, "");
             let ctl = started.controller.clone();
             let status = MenuItem::with_id(app, "status", obs_label(&ctl.obs.status().state), false, None::<&str>)?;
-            let layout = MenuItem::with_id(app, "layout", layout_label(None), false, None::<&str>)?;
+            let layout = MenuItem::with_id(app, "layout", layout_label(None, false), false, None::<&str>)?;
+            let layouts = Submenu::with_id(app, "layouts", t.layouts, true)?;
             let open = MenuItem::with_id(app, "open", t.open, true, None::<&str>)?;
             let auto = CheckMenuItem::with_id(app, "autostart", t.autostart, true, launcher.is_enabled().unwrap_or(false), None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", t.quit, true, None::<&str>)?;
             let sep = || PredefinedMenuItem::separator(app);
-            let menu = Menu::with_items(app, &[&open, &sep()?, &status, &layout, &sep()?, &auto, &quit])?;
+            let menu = Menu::with_items(app, &[&open, &sep()?, &status, &layout, &layouts, &sep()?, &auto, &quit])?;
             // An "Install update" line joins the top of this menu when there is one.
             let updates = updates::Updates::new(
                 app.handle().clone(),
@@ -181,6 +333,25 @@ fn main() {
             // Restarted by an update: the page that started it is still open and reloads by itself.
             let updated = std::fs::remove_file(started.data_dir.join(updates::UPDATED_FLAG)).is_ok();
 
+            // Hotkeys (also for a Stream Deck's hotkey button): Ctrl+Alt+Shift+L / N unless changed on the page.
+            let bound: Bound = Arc::new(Mutex::new(Vec::new()));
+            let (hk_ctl, b) = (ctl.clone(), bound.clone());
+            app.handle().plugin(
+                tauri_plugin_global_shortcut::Builder::new()
+                    .with_handler(move |_app, shortcut, event| {
+                        if event.state() != ShortcutState::Pressed {
+                            return;
+                        }
+                        let action = b.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(s, _)| s == shortcut).map(|(_, a)| a.clone());
+                        if let Some(a) = action {
+                            run_hotkey(&hk_ctl, &a);
+                        }
+                    })
+                    .build(),
+            )?;
+            watch_hotkeys(app.handle().clone(), started.hotkeys.clone(), bound);
+
+            let menu_ctl = ctl.clone();
             let tray = TrayIconBuilder::with_id("main")
                 .icon(app.default_window_icon().cloned().ok_or("no app icon")?)
                 .tooltip("Kosmik Layouts")
@@ -201,20 +372,36 @@ fn main() {
                         let _ = auto.set_checked(l.is_enabled().unwrap_or(!on));
                     }
                     "quit" => app.exit(0),
+                    id if id.starts_with("lock:") => {
+                        let target = id["lock:".len()..].to_string();
+                        let c = menu_ctl.clone();
+                        tauri::async_runtime::spawn(async move { c.set_lock((!target.is_empty()).then_some(target.as_str())).await });
+                    }
                     _ => {}
                 })
                 .build(app)?;
 
-            // Keep the status lines and tooltip in step with OBS and the layout on screen.
+            // Keep the status lines, the layout list and the tooltip in step with OBS, the layouts and what's on screen.
             let mut obs_watch = ctl.obs.status_watch();
             let mut changes = ctl.changes();
+            let mut saved = ctl.store.revisions();
+            let mut keys = started.hotkeys.keys_watch();
+            let handle = app.handle().clone();
+            let mut layout_menu = LayoutMenu { sub: layouts, shown: None, checks: Vec::new() };
             tauri::async_runtime::spawn(async move {
                 loop {
                     let obs_text = obs_label(&obs_watch.borrow_and_update().state);
                     changes.borrow_and_update();
+                    saved.borrow_and_update();
+                    let hints = hotkey_hints(&keys.borrow_and_update(), &t);
                     let name = ctl.active().and_then(|id| ctl.profile(&id)).and_then(|p| p["name"].as_str().map(String::from));
+                    let locked = ctl.lock_id();
+                    let list = ctl.store.profiles().iter().filter_map(|p| Some((p["id"].as_str()?.to_string(), p["name"].as_str().unwrap_or("").to_string()))).collect();
+                    if let Err(e) = layout_menu.refresh(&handle, list, hints, locked.as_deref(), &t) {
+                        log::line(format!("tray menu: {e}"));
+                    }
                     let _ = status.set_text(obs_text);
-                    let _ = layout.set_text(layout_label(name.clone()));
+                    let _ = layout.set_text(layout_label(name.clone(), locked.is_some()));
                     let tip = match name {
                         Some(n) => format!("Kosmik Layouts · {obs_text} · {n}"),
                         None => format!("Kosmik Layouts · {obs_text}"),
@@ -223,6 +410,8 @@ fn main() {
                     tokio::select! {
                         r = obs_watch.changed() => if r.is_err() { return },
                         r = changes.changed() => if r.is_err() { return },
+                        r = saved.changed() => if r.is_err() { return },
+                        r = keys.changed() => if r.is_err() { return },
                     }
                 }
             });

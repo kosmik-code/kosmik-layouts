@@ -1,6 +1,6 @@
 [package]
 name = "kosmik-layouts"
-version = "0.2.0"
+version = "0.2.1"
 description = "Per-game OBS layouts in one scene"
 authors = ["Kosmik"]
 license = "MIT"
@@ -24,6 +24,7 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-global-shortcut = "2"
 tauri-plugin-updater = { version = "2", default-features = false, features = ["native-tls"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time", "io-util", "signal"] }
 tokio-tungstenite = "0.26"

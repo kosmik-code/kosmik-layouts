@@ -98,6 +98,13 @@
         <p id="new-msg" class="msg" role="status" hidden></p>
       </form>
 
+      <!-- Only the installed app has hotkeys: hidden until /api/state lists them. -->
+      <section id="hotkeys" class="card hotkeys" hidden>
+        <h2 data-i18n="hk.title">Hotkeys</h2>
+        <p class="hint" data-i18n="hk.anywhere">Work anywhere, even inside a game. A Stream Deck's “Hotkey” action can press them for you.</p>
+        <div id="hk-rows"></div>
+      </section>
+
       <section class="card">
         <h2 data-i18n="log.title">Activity</h2>
         <ol id="log" class="log"></ol>

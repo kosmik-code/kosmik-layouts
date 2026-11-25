@@ -5,6 +5,7 @@
 pub mod connection;
 pub mod controller;
 pub mod games;
+pub mod hotkeys;
 pub mod js;
 pub mod layout;
 pub mod log;
@@ -25,6 +26,12 @@ pub static PUBLIC: Dir<'static> = include_dir!("$CARGO_MANIFEST_DIR/../public");
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_PORT: u16 = 7430;
+/// What the global hotkeys can do, with their out-of-the-box keys (changeable on the page).
+pub static HOTKEYS: [hotkeys::Action; 2] = [
+    hotkeys::Action { id: "lock", default: "Ctrl+Alt+Shift+L" },
+    hotkeys::Action { id: "next", default: "Ctrl+Alt+Shift+N" },
+];
+const OBS_PROGRAMS: [&str; 3] = ["obs64.exe", "obs32.exe", "obs.exe"];
 
 pub struct Options {
     pub port: u16,
@@ -64,6 +71,7 @@ pub struct App {
     pub data_dir: PathBuf,
     pub controller: Arc<controller::Controller>,
     pub server: Arc<server::ServerHandle>,
+    pub hotkeys: Arc<hotkeys::Hotkeys>,
 }
 
 #[derive(Debug)]
@@ -94,6 +102,7 @@ pub async fn start(opts: Options) -> Result<App, StartError> {
     })?;
 
     let store = Arc::new(store::Store::load(&opts.data_dir).map_err(other)?);
+    let hotkeys = hotkeys::Hotkeys::load(&opts.data_dir, &HOTKEYS);
 
     // Address and password: KL_OBS_URL / KL_OBS_PASSWORD, else what was typed on the page, else OBS's own settings.
     let obs = obs::ObsClient::new(Duration::from_secs(3), Duration::from_secs(5));
@@ -101,7 +110,15 @@ pub async fn start(opts: Options) -> Result<App, StartError> {
     let read_settings: connection::ReadSettings = Arc::new(move || obs::read_obs_settings(app_data.as_deref()));
     let connection = connection::Connection::load(obs.clone(), &opts.data_dir, opts.obs_url.clone(), opts.obs_password.clone(), read_settings);
     let s = store.clone();
-    let watcher = games::GameWatcher::new(Arc::new(move || s.profiles()), Arc::new(games::list_processes), Duration::from_secs(3));
+    let watcher = games::GameWatcher::new(Arc::new(move || s.profiles()), Arc::new(games::list_processes), Duration::from_secs(1));
+    // OBS is running but not connected (just opened, or its WebSocket server is still starting): try
+    // now rather than at the next retry, so the layout is up as soon as OBS can take it.
+    let o = obs.clone();
+    watcher.on_poll(move |running| {
+        if OBS_PROGRAMS.iter().any(|p| running.contains(*p)) {
+            o.nudge();
+        }
+    });
     let controller = controller::Controller::new(obs.clone(), store, Some(&watcher));
     controller.set_connection(connection.clone());
     connection.watch();
@@ -113,7 +130,13 @@ pub async fn start(opts: Options) -> Result<App, StartError> {
     let server = Arc::new(
         server::start_server(
             listener,
-            server::ServerOptions { controller: controller.clone(), connection: Some(connection.clone()), list_apps: Arc::new(games::list_windowed_apps), public },
+            server::ServerOptions {
+                controller: controller.clone(),
+                connection: Some(connection.clone()),
+                list_apps: Arc::new(games::list_windowed_apps),
+                public,
+                hotkeys: hotkeys.clone(),
+            },
         )
         .await
         .map_err(other)?,
@@ -139,5 +162,5 @@ pub async fn start(opts: Options) -> Result<App, StartError> {
     watcher.start();
     log::line(format!("Control page: {}/", server.url));
 
-    Ok(App { url: server.url.clone(), data_dir: opts.data_dir, controller, server })
+    Ok(App { url: server.url.clone(), data_dir: opts.data_dir, controller, server, hotkeys })
 }

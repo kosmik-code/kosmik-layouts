@@ -10,7 +10,7 @@ Keep one live scene in OBS. When you open a game, Kosmik Layouts moves your came
 - **Each game can capture its own way.** One game on Game Capture, another on Window Capture: the right one turns on and points at the right game.
 - **Background games don't get in the way.** If an idle game is open, the game you started last wins, and alt-tabbing changes nothing.
 - **Smooth moves.** Sources slide into place (or snap, if you prefer).
-- **Manual control when you want it.** Show a layout once, or lock one on screen whatever you're playing.
+- **Manual control when you want it.** Show a layout once, or lock one on screen whatever you're playing, from the page, the tray icon or a hotkey.
 - **Safe.** It never creates, deletes or renames anything in OBS.
 
 The page is in Spanish or English and comes in three looks (Studio, Daylight, Pixel), shared with [Kosmik Voice](https://github.com/kosmik-code/kosmik-voice).
@@ -24,7 +24,7 @@ The page is in Spanish or English and comes in three looks (Studio, Daylight, Pi
 
 1. Download **`Kosmik-Layouts_…_x64-setup.exe`** from the [latest release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) and run it. No admin rights needed.
 2. Windows may say *"Windows protected your PC"*, because the installer isn't signed yet. Press **More info → Run anyway**.
-3. The control page opens in your browser. Kosmik Layouts now lives in the tray, next to the clock: click its icon to open the page again, right-click it to see what's on screen, to quit, or to stop it starting with Windows.
+3. The control page opens in your browser. Kosmik Layouts now lives in the tray, next to the clock: click its icon to open the page again, right-click it to see what's on screen, pick a layout, quit, or stop it starting with Windows.
 
 It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray. Prefer running it from the source code with Node.js? See [Run from source](#run-from-source).
 
@@ -42,6 +42,7 @@ Now close the game and open it again: the scene follows. The **First steps** but
 - **Leave a source alone:** open *Sources it controls* on a layout and untick it (your alerts, say), and that layout won't touch it.
 - **Renamed a source in OBS?** Layouts find sources by name, so press **Update from OBS** on the layouts that use it.
 - **Anything you move by hand stays** until the next game opens or closes.
+- **Hotkeys:** **Ctrl+Alt+Shift+L** locks the layout on screen (press again to go back to automatic), **Ctrl+Alt+Shift+N** steps through your layouts and then back to automatic. Change them (or turn them off) in the **Hotkeys** card on the page; if another program already uses a combination, the card says so. A Stream Deck's *Hotkey* action can press them for you. The tray icon's *Choose layout* menu does the same with the mouse.
 - **Kosmik Voice too:** set its overlay's *Placement* to **Free box** and it becomes a normal source you can drag and resize, so each layout can put your voice overlay somewhere else.
 - **Which scene it controls:** whichever one is live, unless you pick one under **OBS connection › Behaviour**. There you can also set how long the slide animation lasts (0 = instant).
 - **Two-PC setups:** in **OBS connection**, choose *Manual* and type the streaming PC's address and the password from OBS's *Show Connect Info*. Run Kosmik Layouts on the gaming PC, since that's where it looks for games.
@@ -61,9 +62,9 @@ This is an early version that does one thing well. There's no drag-and-drop edit
 
 - **Layouts are snapshots.** Saving stores, for every source in the scene, its position, size, rotation, crop, bounds and whether it's visible. A layout only touches the sources it lists; unticked ones are skipped, and sources that are no longer in the scene are reported in *Activity*.
 - **Capture targets.** For Game Capture, Window Capture and Application Audio Capture sources, a layout also stores what they capture: the mode (a specific window or any fullscreen app) and the window. Targets are matched by program (`window_priority` = executable), not just by window title or class, so another game built on the same engine (two Unity games, say) is never grabbed by mistake. A capture is only re-pointed when its target really differs and only if that layout shows it, because Window Capture restarts on every settings change. Captures are re-pointed before anything slides in, so a source never appears showing the previous game.
-- **Game detection.** Every 3 seconds the app reads the Windows process list. If several programs with a layout are running, the one started last wins; programs already open when the app starts count as equally old, and then the layout listed first wins. No game means the default layout.
+- **Game detection.** Every second the app reads the Windows process list (about a millisecond of work; the Node.js version checks every 3 seconds). If several programs with a layout are running, the one started last wins; programs already open when the app starts count as equally old, and then the layout listed first wins. No game means the default layout.
 - **Switching.** It only acts when the wanted layout changes: a game starts or closes, you lock or unlock, or OBS reconnects. Moves are animated (400 ms by default) and a newer switch cancels an older animation.
-- **OBS restarts.** While OBS is starting it answers "not ready"; the app waits and retries instead of failing, and re-applies once OBS is back.
+- **OBS restarts.** While OBS is starting it answers "not ready"; the app waits and retries instead of failing, and re-applies once OBS is back. The app also notices OBS's program starting and connects right away instead of waiting for its next retry.
 
 ### Connecting to OBS
 
@@ -73,7 +74,7 @@ This is an early version that does one thing well. There's no drag-and-drop edit
 
 ### The app
 
-The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the control page opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The page is built into the program. Data goes to `%APPDATA%\Kosmik Layouts` (`profiles.json`, `obs-connection.json`, and `kosmik-layouts.log`, replaced on each start). Opening it a second time just opens the page. Running programs are read straight from Windows, without `tasklist` or PowerShell. The Node.js version in this repository does exactly the same job and stays here for development; both use the same port, so run only one of them at a time.
+The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the control page opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The page is built into the program. Data goes to `%APPDATA%\Kosmik Layouts` (`profiles.json`, `obs-connection.json`, `hotkeys.json`, and `kosmik-layouts.log`, replaced on each start). Opening it a second time just opens the page. Running programs are read straight from Windows, without `tasklist` or PowerShell. The Node.js version in this repository does exactly the same job and stays here for development; both use the same port, so run only one of them at a time.
 
 To move from the Node.js version to the app, quit the Node.js version and copy `profiles.json` (and `obs-connection.json`, if you set the connection by hand) from its `data` folder into `%APPDATA%\Kosmik Layouts`.
 
