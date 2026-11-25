@@ -17,20 +17,16 @@ The page is in Spanish or English and comes in three looks (Studio, Daylight, Pi
 
 ## What you need
 
-- Windows.
+- Windows 10 or 11.
 - OBS 28 or newer.
-- [Node.js](https://nodejs.org/) 22 or newer (the LTS download is fine).
 
 ## Install
 
-Download the [latest release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) (**Source code (zip)** under *Assets*) and unzip it, or `git clone https://github.com/kosmik-code/kosmik-layouts`. Open a terminal in its folder and run:
+1. Download **`Kosmik-Layouts_…_x64-setup.exe`** from the [latest release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) and run it. No admin rights needed.
+2. Windows may say *"Windows protected your PC"*, because the installer isn't signed yet. Press **More info → Run anyway**.
+3. The control page opens in your browser. Kosmik Layouts now lives in the tray, next to the clock: click its icon to open the page again, right-click it to see what's on screen, to quit, or to stop it starting with Windows.
 
-```powershell
-npm install
-npm start
-```
-
-Then open **<http://127.0.0.1:7430/>**. Keep that terminal open while you stream.
+It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray. Prefer running it from the source code with Node.js? See [Run from source](#run-from-source).
 
 ## Set it up
 
@@ -49,10 +45,13 @@ Now close the game and open it again: the scene follows. The **First steps** but
 - **Kosmik Voice too:** set its overlay's *Placement* to **Free box** and it becomes a normal source you can drag and resize, so each layout can put your voice overlay somewhere else.
 - **Which scene it controls:** whichever one is live, unless you pick one under **OBS connection › Behaviour**. There you can also set how long the slide animation lasts (0 = instant).
 - **Two-PC setups:** in **OBS connection**, choose *Manual* and type the streaming PC's address and the password from OBS's *Show Connect Info*. Run Kosmik Layouts on the gaming PC, since that's where it looks for games.
+- **It starts with Windows** and waits in the tray, so your layouts follow your games as soon as OBS is open. Turn that off from the tray icon.
+- **Updates:** when there's a new version, the tray menu shows *Install update* and the page shows a banner with **Install now**. One click installs it and Kosmik Layouts restarts by itself; your layouts are kept.
+- **Your layouts** live in `%APPDATA%\Kosmik Layouts`.
 
 ## Status
 
-This is an early version that does one thing well. There's no drag-and-drop editor yet: you arrange things in OBS itself. Ideas for later: dragging sources on the live picture, Twitch category as a trigger, vertical canvases (Aitum Vertical), nested scenes and groups, and a tray icon instead of a terminal.
+This is an early version that does one thing well. There's no drag-and-drop editor yet: you arrange things in OBS itself. Ideas for later: dragging sources on the live picture, Twitch category as a trigger, vertical canvases (Aitum Vertical), and nested scenes and groups.
 
 ---
 
@@ -69,30 +68,59 @@ This is an early version that does one thing well. There's no drag-and-drop edit
 ### Connecting to OBS
 
 - **Automatic** (default): the WebSocket port and password are read from OBS's own settings on this PC (`%APPDATA%\obs-studio\plugin_config\obs-websocket\config.json`), and re-read every few seconds, so a changed port or password (or the server just being switched on) is picked up by itself.
-- **Manual**: host, port and password typed under *OBS connection*. *Save and connect* reconnects right away and says whether it worked (connected, wrong password, or nobody answering). Saved in `data/obs-connection.json`. The password never reaches the browser: the page only shows whether one is saved, and leaving the field empty keeps it.
+- **Manual**: host, port and password typed under *OBS connection*. *Save and connect* reconnects right away and says whether it worked (connected, wrong password, or nobody answering). Saved in `obs-connection.json` in the data folder. The password never reaches the browser: the page only shows whether one is saved, and leaving the field empty keeps it.
 - `KL_OBS_URL=ws://127.0.0.1:4455` and `KL_OBS_PASSWORD=...` override both (the page then shows the connection as fixed).
+
+### The app
+
+The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the control page opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The page is built into the program. Data goes to `%APPDATA%\Kosmik Layouts` (`profiles.json`, `obs-connection.json`, and `kosmik-layouts.log`, replaced on each start). Opening it a second time just opens the page. Running programs are read straight from Windows, without `tasklist` or PowerShell. The Node.js version in this repository does exactly the same job and stays here for development; both use the same port, so run only one of them at a time.
+
+To move from the Node.js version to the app, quit the Node.js version and copy `profiles.json` (and `obs-connection.json`, if you set the connection by hand) from its `data` folder into `%APPDATA%\Kosmik Layouts`.
+
+### Updates
+
+The app checks the [latest GitHub release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) shortly after it starts and then every 6 hours, with Tauri's updater: it reads the release's `latest.json`, and installs only an installer signed with the project's update key (the public half is in `app/tauri.conf.json`). Installing runs the installer with a progress bar only, then starts the app again, and the open page reloads itself. The Node.js version doesn't check for updates.
 
 ### Data and options
 
-Layouts are stored in `data/profiles.json`, validated before every write and written atomically. A file that fails validation is moved aside as `profiles.broken-<time>.json`. Each layout keeps the size of every source, which the drawing on its card uses; layouts saved by older versions use the sizes OBS reports while connected (press **Update from OBS** once to store them).
+Layouts are stored in `profiles.json` in the data folder (`%APPDATA%\Kosmik Layouts` for the app, `data/` from source), validated before every write and written atomically. A file that fails validation is moved aside as `profiles.broken-<time>.json`. Each layout keeps the size of every source, which the drawing on its card uses; layouts saved by older versions use the sizes OBS reports while connected (press **Update from OBS** once to store them).
 
-Environment variables: `KL_PORT` (default `7430`), `KL_DATA_DIR` (default `./data`), `KL_OBS_URL`, `KL_OBS_PASSWORD`. The page accepts `?look=studio|daylight|pixel`.
+Environment variables (app and source): `KL_PORT` (default `7430`), `KL_DATA_DIR` (default `%APPDATA%\Kosmik Layouts` for the app, `./data` from source), `KL_OBS_URL`, `KL_OBS_PASSWORD`. The app also takes `KL_UPDATE_CHECK=0` (no update check) and `KL_PUBLIC_DIR=<folder>` (serve the page from disk while developing). The page accepts `?look=studio|daylight|pixel`.
 
 ### Security
 
 - The page listens on `127.0.0.1` only, refuses foreign `Host` headers (DNS rebinding) and refuses changes without a same-origin `Origin` header, so other websites can neither read it nor drive it.
-- The only connection it makes is to OBS: on your own PC, or at the address you typed.
+- The only connections it makes are to OBS (on your own PC, or at the address you typed) and, for the app, the update check: it downloads the release's `latest.json` from GitHub every few hours, sending nothing about you. `KL_UPDATE_CHECK=0` turns it off.
+
+### Run from source
+
+With [Node.js](https://nodejs.org/) 22 or newer: download the [latest release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) (**Source code (zip)** under *Assets*) and unzip it, or `git clone https://github.com/kosmik-code/kosmik-layouts`. Open a terminal in its folder and run:
+
+```powershell
+npm install
+npm start
+```
+
+Then open **<http://127.0.0.1:7430/>**. Keep that terminal open while you stream. Updates: `git pull` (or a new zip) and start it again; the `data` folder is kept.
 
 ### Development
 
 ```powershell
-npm test
+npm test                # the Node.js backend
+cd app
+cargo test              # the Rust backend (same cases, against a fake OBS)
+$env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\kosmik-voice.key"   # signs the update (same key as Kosmik Voice)
+npx @tauri-apps/cli@2 build   # installer in app/target/release/bundle/nsis/
 ```
 
 The tests run against an in-process fake OBS that speaks the real obs-websocket v5 protocol, password authentication included.
 
+Building the app needs [Rust](https://rustup.rs/) and the Visual Studio C++ Build Tools. Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs the installer on GitHub and publishes it with `latest.json` as a release (`.github/workflows/release.yml`); installed apps offer it from then on. The signing key lives outside the repository (`~/.tauri/kosmik-voice.key`, shared with Kosmik Voice, also the repository secret `TAURI_SIGNING_PRIVATE_KEY`). Keep a backup: without it, installed copies can't be updated automatically.
+
 | Path | Role |
 |---|---|
+| `app/src/` | The app: `obs.rs`, `connection.rs`, `games.rs`, `layout.rs`, `controller.rs`, `store.rs`, `server.rs` (same roles as the files below), `main.rs` (tray) and `updates.rs` (the app's updater) |
+| `app/tauri.conf.json`, `app/windows/hooks.nsh` | Installer settings; uninstall removes the autostart entry |
 | `src/obs.js` | obs-websocket v5 client: auth, requests, reconnects; reads OBS's own settings |
 | `src/connection.js` | Where OBS is: automatic, manual or environment |
 | `src/games.js` | Process list, start order and which layout a game wants |

@@ -5,6 +5,9 @@ const $ = (s, r = document) => r.querySelector(s);
 const SVG = "http://www.w3.org/2000/svg";
 let S = null;
 let profilesSig = "";
+let serverVersion = null; // the app version first seen; a new one after an update reloads the page
+let updateSig = "";
+const UPDATE_DISMISS_KEY = "kl-update-dismissed";
 let tab = "layouts";
 
 function h(tag, props = {}, ...kids) {
@@ -139,8 +142,14 @@ document.querySelectorAll(".tabs a").forEach((a) =>
 // ---------------------------------------------------------------- state
 
 function apply(state) {
+  if (state.version) {
+    // After an update the app restarts with a new page: load it.
+    if (serverVersion && state.version !== serverVersion) return location.reload();
+    serverVersion = state.version;
+  }
   const was = S?.obs.state;
   S = state;
+  renderUpdate();
   const st = S.obs.state;
   if (was !== st) liveTick(); // picture appears (or goes away) right when OBS connects or drops
   const pill = $("#obs");
@@ -761,6 +770,46 @@ $("#anim-range").addEventListener("change", (e) => saveSettings({ animateMs: Num
 $("#auto").addEventListener("click", () => api("/api/lock", "POST", { id: null }));
 
 // ---------------------------------------------------------------- polling
+
+/** Banner when the installed app has an update. Dismissing hides it until there is an even newer one. */
+function renderUpdate(force = false) {
+  const box = $("#update");
+  const u = S?.update;
+  const sig = JSON.stringify(u ?? null) + getLanguage();
+  if (sig === updateSig && !force) return;
+  updateSig = sig;
+  if (u?.state === "installing") {
+    box.hidden = false;
+    return box.replaceChildren(
+      h("strong", { text: t("update.installing", { version: u.latest?.version ?? "" }) }),
+      h("span", { text: t("update.restarting") }),
+    );
+  }
+  const key = u?.state === "available" ? `${u.url}|${u.latest?.version}` : "";
+  box.hidden = !key || store.get(UPDATE_DISMISS_KEY) === key;
+  if (box.hidden) return box.replaceChildren();
+  box.replaceChildren(
+    h("strong", { text: t("update.title") }),
+    h("span", { text: t("update.version", { version: u.latest.version }) }),
+    h("span", { text: t(u.error ? "update.failed" : u.install ? "update.how" : "update.howDownload") }),
+    h("a", { href: u.url, target: "_blank", rel: "noopener noreferrer", text: t(u.install && !u.error ? "update.changes" : "update.download") }),
+    u.install
+      ? h("button", { type: "button", class: "small primary", text: t(u.error ? "update.retry" : "update.install"), onclick: async (e) => {
+          const button = e.currentTarget;
+          button.disabled = true;
+          try {
+            await api("/api/update/install", "POST", {});
+          } catch {
+            button.disabled = false;
+          }
+        } })
+      : null,
+    h("button", { type: "button", class: "small", text: t("update.dismiss"), onclick: () => {
+      store.set(UPDATE_DISMISS_KEY, key);
+      renderUpdate(true);
+    } }),
+  );
+}
 
 async function poll() {
   try {

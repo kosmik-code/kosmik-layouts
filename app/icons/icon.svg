@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- Kosmik Layouts: a stream frame (amber) with the game (teal) and a camera tucked in the corner. -->
+  <rect x="32" y="32" width="960" height="960" rx="220" fill="#1b1b23"/>
+  <rect x="170" y="250" width="684" height="524" rx="64" fill="none" stroke="#f3b562" stroke-width="72"/>
+  <rect x="262" y="342" width="352" height="340" rx="28" fill="#5ec8b3"/>
+  <rect x="650" y="530" width="112" height="152" rx="24" fill="#f3b562"/>
+</svg>

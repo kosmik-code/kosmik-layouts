@@ -31,6 +31,16 @@ label.check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .range-row { display: flex; align-items: center; gap: 12px; }
 .range-row input[type="number"] { width: 92px; flex: none; }
 
+/* ---------- update banner (installed app) ---------- */
+.update-banner {
+  --edge: var(--ok); --shadow: none; --hair: color-mix(in srgb, var(--ok) 45%, var(--line));
+  max-width: 1288px; margin: 16px auto 0; padding: 10px 14px; background: var(--surface);
+  width: calc(100% - 2 * max(16px, env(safe-area-inset-left, 0px)));
+  display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+}
+.update-banner strong { color: var(--ok); }
+.update-banner button:first-of-type { margin-left: auto; }
+
 /* ---------- first steps (same pattern as Kosmik Voice) ---------- */
 .steps-bar {
   --edge: var(--select); --shadow: none; --hair: var(--line);
