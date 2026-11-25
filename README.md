@@ -23,7 +23,7 @@ The page is in Spanish or English and comes in three looks (Studio, Daylight, Pi
 
 ## Install
 
-Download this project (green **Code** button → *Download ZIP*, then unzip it, or `git clone https://github.com/kosmik-code/kosmik-layouts`). Open a terminal in its folder and run:
+Download the [latest release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) (**Source code (zip)** under *Assets*) and unzip it, or `git clone https://github.com/kosmik-code/kosmik-layouts`. Open a terminal in its folder and run:
 
 ```powershell
 npm install
