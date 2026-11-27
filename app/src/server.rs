@@ -656,7 +656,7 @@ mod tests {
         assert_eq!(foreign.status(), 403);
         assert_eq!(raw_status(c.port, "evil.example", "/api/state").await, 403, "DNS rebinding: a foreign Host is refused");
         assert_eq!(c.call(M::GET, "/", None).send().await.unwrap().status(), 200);
-        assert_eq!(c.call(M::GET, "/../package.json", None).send().await.unwrap().status(), 404);
+        assert_eq!(c.call(M::GET, "/../README.md", None).send().await.unwrap().status(), 404);
         let page = c.call(M::GET, "/app.js", None).send().await.unwrap();
         assert_eq!(page.headers()["content-type"], "text/javascript; charset=utf-8");
         obs.stop();

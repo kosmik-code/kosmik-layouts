@@ -50,8 +50,7 @@ pub fn default_data_dir() -> PathBuf {
 }
 
 impl Options {
-    /// KL_PORT, KL_DATA_DIR, KL_OBS_URL, KL_OBS_PASSWORD like the Node version, plus KL_PUBLIC_DIR
-    /// and KL_UPDATE_CHECK=0.
+    /// Reads KL_PORT, KL_DATA_DIR, KL_OBS_URL, KL_OBS_PASSWORD, KL_PUBLIC_DIR and KL_UPDATE_CHECK.
     pub fn from_env() -> Self {
         let var = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
         Options {

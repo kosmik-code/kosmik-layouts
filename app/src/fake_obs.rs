@@ -1,5 +1,5 @@
 //! In-process stand-in for OBS's WebSocket server (protocol v5, with password auth), for tests.
-//! Holds scenes with items and records every request it receives. Mirrors test/helpers/fake-obs.js.
+//! Holds scenes with items and records every request it receives.
 
 use crate::obs::auth_string;
 use futures_util::{SinkExt, StreamExt};

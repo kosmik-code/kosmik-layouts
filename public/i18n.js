@@ -45,7 +45,7 @@ const ES = {
   "help.auth": "OBS rechazó la contraseña. Si la cambiaste recién, esperá unos segundos: se vuelve a leer sola.",
   "help.custom": "La dirección o la contraseña vienen de KL_OBS_URL / KL_OBS_PASSWORD: revisá que coincidan con OBS.",
   "help.where": "Buscando OBS en {url}",
-  "help.app": "Abrí Kosmik Layouts desde el menú Inicio (o con npm start, si lo usás desde el código) y recargá esta página.",
+  "help.app": "Abrí Kosmik Layouts desde el menú Inicio (o ejecutá cargo run desde la carpeta app si lo usás desde el código fuente) y recargá esta página.",
 
   "layouts.title": "Layouts",
   "layouts.rule": "Si hay varios juegos tuyos abiertos, manda el último que abriste. Cambiar de ventana no cambia nada.",
@@ -288,7 +288,7 @@ const EN = {
   "help.auth": "OBS rejected the password. If you just changed it, give it a few seconds: it's re-read automatically.",
   "help.custom": "You set your own address or password (KL_OBS_URL / KL_OBS_PASSWORD): check they match OBS.",
   "help.where": "Looking for OBS at {url}",
-  "help.app": "Start Kosmik Layouts from the Start menu (or with npm start, when running from source) and reload this page.",
+  "help.app": "Start Kosmik Layouts from the Start menu (or run cargo run from the app folder if you’re running from source) and reload this page.",
 
   "layouts.title": "Layouts",
   "layouts.rule": "If several of your games are open, the one you started last wins. Switching windows changes nothing.",

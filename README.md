@@ -26,7 +26,7 @@ The page is in Spanish or English and comes in three looks (Studio, Daylight, Pi
 2. Windows may say *"Windows protected your PC"*, because the installer isn't signed yet. Press **More info → Run anyway**.
 3. The control page opens in your browser. Kosmik Layouts now lives in the tray, next to the clock: click its icon to open the page again, right-click it to see what's on screen, pick a layout, quit, or stop it starting with Windows.
 
-It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray. Prefer running it from the source code with Node.js? See [Run from source](#run-from-source).
+It's tiny: about a 2 MB download, and a few MB of memory while it waits in the tray.
 
 ## Set it up
 
@@ -62,7 +62,7 @@ This is an early version that does one thing well. There's no drag-and-drop edit
 
 - **Layouts are snapshots.** Saving stores, for every source in the scene, its position, size, rotation, crop, bounds and whether it's visible. A layout only touches the sources it lists; unticked ones are skipped, and sources that are no longer in the scene are reported in *Activity*.
 - **Capture targets.** For Game Capture, Window Capture and Application Audio Capture sources, a layout also stores what they capture: the mode (a specific window or any fullscreen app) and the window. Targets are matched by program (`window_priority` = executable), not just by window title or class, so another game built on the same engine (two Unity games, say) is never grabbed by mistake. A capture is only re-pointed when its target really differs and only if that layout shows it, because Window Capture restarts on every settings change. Captures are re-pointed before anything slides in, so a source never appears showing the previous game.
-- **Game detection.** Every second the app reads the Windows process list (about a millisecond of work; the Node.js version checks every 3 seconds). If several programs with a layout are running, the one started last wins; programs already open when the app starts count as equally old, and then the layout listed first wins. No game means the default layout.
+- **Game detection.** Every second the app reads the Windows process list (about a millisecond of work). If several programs with a layout are running, the one started last wins; programs already open when the app starts count as equally old, and then the layout listed first wins. No game means the default layout.
 - **Switching.** It only acts when the wanted layout changes: a game starts or closes, you lock or unlock, or OBS reconnects. Moves are animated (400 ms by default) and a newer switch cancels an older animation.
 - **OBS restarts.** While OBS is starting it answers "not ready"; the app waits and retries instead of failing, and re-applies once OBS is back. The app also notices OBS's program starting and connects right away instead of waiting for its next retry.
 
@@ -74,62 +74,50 @@ This is an early version that does one thing well. There's no drag-and-drop edit
 
 ### The app
 
-The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the control page opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The page is built into the program. Data goes to `%APPDATA%\Kosmik Layouts` (`profiles.json`, `obs-connection.json`, `hotkeys.json`, and `kosmik-layouts.log`, replaced on each start). Opening it a second time just opens the page. Running programs are read straight from Windows, without `tasklist` or PowerShell. The Node.js version in this repository does exactly the same job and stays here for development; both use the same port, so run only one of them at a time.
-
-To move from the Node.js version to the app, quit the Node.js version and copy `profiles.json` (and `obs-connection.json`, if you set the connection by hand) from its `data` folder into `%APPDATA%\Kosmik Layouts`.
+The installed app is a small Rust program ([Tauri](https://tauri.app/) for the tray, the installer and starting with Windows). It has no window of its own: it runs the local server, and the control page opens in your normal browser, so nothing heavy stays loaded while it waits in the tray. The page is built into the program. Data goes to `%APPDATA%\Kosmik Layouts` (`profiles.json`, `obs-connection.json`, `hotkeys.json`, and `kosmik-layouts.log`, replaced on each start). Opening it a second time just opens the page. Running programs are read straight from Windows, without `tasklist` or PowerShell.
 
 ### Updates
 
-The app checks the [latest GitHub release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) shortly after it starts and then every 6 hours, with Tauri's updater: it reads the release's `latest.json`, and installs only an installer signed with the project's update key (the public half is in `app/tauri.conf.json`). Installing runs the installer with a progress bar only, then starts the app again, and the open page reloads itself. The Node.js version doesn't check for updates.
+The app checks the [latest GitHub release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) shortly after it starts and then every 6 hours, with Tauri's updater: it reads the release's `latest.json`, and installs only an installer signed with the project's update key (the public half is in `app/tauri.conf.json`). Installing runs the installer with a progress bar only, then starts the app again, and the open page reloads itself.
 
 ### Data and options
 
-Layouts are stored in `profiles.json` in the data folder (`%APPDATA%\Kosmik Layouts` for the app, `data/` from source), validated before every write and written atomically. A file that fails validation is moved aside as `profiles.broken-<time>.json`. Each layout keeps the size of every source, which the drawing on its card uses; layouts saved by older versions use the sizes OBS reports while connected (press **Update from OBS** once to store them).
+Layouts are stored in `profiles.json` in `%APPDATA%\Kosmik Layouts` by default, validated before every write and written atomically. A file that fails validation is moved aside as `profiles.broken-<time>.json`. Each layout keeps the size of every source, which the drawing on its card uses; layouts saved by older versions use the sizes OBS reports while connected (press **Update from OBS** once to store them).
 
-Environment variables (app and source): `KL_PORT` (default `7430`), `KL_DATA_DIR` (default `%APPDATA%\Kosmik Layouts` for the app, `./data` from source), `KL_OBS_URL`, `KL_OBS_PASSWORD`. The app also takes `KL_UPDATE_CHECK=0` (no update check) and `KL_PUBLIC_DIR=<folder>` (serve the page from disk while developing). The page accepts `?look=studio|daylight|pixel`.
+Environment variables: `KL_PORT` (default `7430`), `KL_DATA_DIR` (default `%APPDATA%\Kosmik Layouts`), `KL_OBS_URL`, `KL_OBS_PASSWORD`, `KL_UPDATE_CHECK=0` (no update check), and `KL_PUBLIC_DIR=<folder>` (serve the page from disk while developing). The page accepts `?look=studio|daylight|pixel`.
 
 ### Security
 
 - The page listens on `127.0.0.1` only, refuses foreign `Host` headers (DNS rebinding) and refuses changes without a same-origin `Origin` header, so other websites can neither read it nor drive it.
-- The only connections it makes are to OBS (on your own PC, or at the address you typed) and, for the app, the update check: it downloads the release's `latest.json` from GitHub every few hours, sending nothing about you. `KL_UPDATE_CHECK=0` turns it off.
-
-### Run from source
-
-With [Node.js](https://nodejs.org/) 22 or newer: download the [latest release](https://github.com/kosmik-code/kosmik-layouts/releases/latest) (**Source code (zip)** under *Assets*) and unzip it, or `git clone https://github.com/kosmik-code/kosmik-layouts`. Open a terminal in its folder and run:
-
-```powershell
-npm install
-npm start
-```
-
-Then open **<http://127.0.0.1:7430/>**. Keep that terminal open while you stream. Updates: `git pull` (or a new zip) and start it again; the `data` folder is kept.
+- The only connections it makes are to OBS (on your own PC, or at the address you typed) and GitHub for the update check: it downloads the release's `latest.json` from GitHub every few hours, sending nothing about you. `KL_UPDATE_CHECK=0` turns it off.
 
 ### Development
 
+On Windows, install [Rust](https://rustup.rs/) and the Visual Studio C++ Build Tools. Quit any running copy of Kosmik Layouts before launching from source so the port is free. From the repository root:
+
 ```powershell
-npm test                # the Node.js backend
 cd app
-cargo test              # the Rust backend (same cases, against a fake OBS)
-$env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\kosmik-voice.key"   # signs the update (same key as Kosmik Voice)
-npx @tauri-apps/cli@2 build   # installer in app/target/release/bundle/nsis/
+cargo test
+cargo run
 ```
 
-The tests run against an in-process fake OBS that speaks the real obs-websocket v5 protocol, password authentication included.
+The tests run against an in-process fake OBS that speaks the real obs-websocket v5 protocol, password authentication included. `cargo run` launches the tray app and opens the control page in your browser.
 
-Building the app needs [Rust](https://rustup.rs/) and the Visual Studio C++ Build Tools. Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs the installer on GitHub and publishes it with `latest.json` as a release (`.github/workflows/release.yml`); installed apps offer it from then on. The signing key lives outside the repository (`~/.tauri/kosmik-voice.key`, shared with Kosmik Voice, also the repository secret `TAURI_SIGNING_PRIVATE_KEY`). Keep a backup: without it, installed copies can't be updated automatically.
+To build the installer locally and sign it for the in-app updater, run these commands from `app/`:
+
+```powershell
+cargo install tauri-cli --version '^2' --locked
+$env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\kosmik-voice.key"
+cargo tauri build   # installer in app/target/release/bundle/nsis/
+```
+
+Pushing a `v*` tag that matches the version in `app/Cargo.toml` builds and signs the installer on GitHub and publishes it with `latest.json` as a release (`.github/workflows/release.yml`); installed apps offer it from then on. The signing key lives outside the repository (`~/.tauri/kosmik-voice.key`, shared with Kosmik Voice, also the repository secret `TAURI_SIGNING_PRIVATE_KEY`). Keep a backup: without it, installed copies can't be updated automatically.
 
 | Path | Role |
 |---|---|
-| `app/src/` | The app: `obs.rs`, `connection.rs`, `games.rs`, `layout.rs`, `controller.rs`, `store.rs`, `server.rs` (same roles as the files below), `main.rs` (tray) and `updates.rs` (the app's updater) |
+| `app/src/` | Rust app: tray, local server, OBS connection, game detection, layout storage and updates |
 | `app/tauri.conf.json`, `app/windows/hooks.nsh` | Installer settings; uninstall removes the autostart entry |
-| `src/obs.js` | obs-websocket v5 client: auth, requests, reconnects; reads OBS's own settings |
-| `src/connection.js` | Where OBS is: automatic, manual or environment |
-| `src/games.js` | Process list, start order and which layout a game wants |
-| `src/layout.js` | Capturing and applying layouts, capture targets, animation |
-| `src/controller.js` | Decides what to apply and when; activity log |
-| `src/store.js` | `data/profiles.json` schema, validation and atomic writes |
-| `src/server.js` | Control page and JSON API with its guards |
-| `public/` | Control page (`kosmik-ui.*` is shared with Kosmik Voice; keep both copies identical) |
+| `public/` | Browser UI embedded in the Rust app (`kosmik-ui.*` is shared with Kosmik Voice; keep both copies identical) |
 
 ## License
 

@@ -51,7 +51,7 @@ fn text() -> Text {
             quit: "Salir",
             update: "Instalar la actualización {version}",
             updating: "Actualizando…",
-            busy: "Kosmik Layouts no pudo arrancar: el puerto {port} está en uso.\n\n¿Ya está abierto Kosmik Layouts? Fijate en la bandeja del sistema, o cerrá la versión de terminal (npm start).",
+            busy: "Kosmik Layouts no pudo arrancar: el puerto {port} está en uso.\n\n¿Ya está abierto Kosmik Layouts? Fijate en la bandeja del sistema.",
             failed: "Kosmik Layouts no pudo arrancar:\n\n{error}",
         }
     } else {
@@ -66,7 +66,7 @@ fn text() -> Text {
             quit: "Quit",
             update: "Install update {version}",
             updating: "Updating…",
-            busy: "Kosmik Layouts couldn't start: port {port} is in use.\n\nIs Kosmik Layouts already running? Check the system tray, or close the terminal version (npm start).",
+            busy: "Kosmik Layouts couldn't start: port {port} is in use.\n\nIs Kosmik Layouts already running? Check the system tray.",
             failed: "Kosmik Layouts couldn't start:\n\n{error}",
         }
     }
@@ -302,9 +302,8 @@ fn main() {
             app.manage(started.server.clone());
 
             let launcher = app.autolaunch();
-            // First run of the app (even with layouts copied over from the Node.js version): start with
-            // Windows, so layouts follow your games whenever OBS is open. Already on: write it again, so
-            // it follows the program if it was installed somewhere else. Turned off stays off.
+            // Enable autostart on first run so layouts follow your games whenever OBS is open.
+            // If already enabled, refresh the program path; if disabled, leave it off.
             let marker = started.data_dir.join("app-first-run.done");
             if !marker.exists() || launcher.is_enabled().unwrap_or(false) {
                 let _ = launcher.enable();
